@@ -25,6 +25,13 @@ if not GEMINI_API_KEY and env_path.exists():
 # Gemini Model Selection (default to gemini-2.5-flash)
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
+# Retrieve Tavily API Key
+TAVILY_API_KEY = (
+    os.getenv("TAVILY_API_KEY")
+    or os.getenv("tavily_API")
+    or os.getenv("TAVILY_API")
+)
+
 # Content Types supported by the workflow
 SUPPORTED_CONTENT_TYPES = [
     "TikTok Script",

@@ -1,0 +1,11 @@
+{
+  "name": "contentflow-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix my-react-app run dev",
+    "build": "npm --prefix my-react-app run build",
+    "preview": "npm --prefix my-react-app run preview",
+    "lint": "npm --prefix my-react-app run lint"
+  }
+}

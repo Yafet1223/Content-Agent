@@ -19,7 +19,11 @@ import {
   Lightbulb,
   Globe,
   FileText,
-  Bookmark
+  Bookmark,
+  MessageSquare,
+  History,
+  Trash2,
+  ChevronDown
 } from 'lucide-react';
 
 export default function DashboardView({
@@ -37,7 +41,6 @@ export default function DashboardView({
   const [backendUrl] = useState('http://127.0.0.1:8000');
 
   // Dashboard Prompt Generator State
-  // Dashboard Prompt Generator State
   const [promptInput, setPromptInput] = useState('');
   const [selectedPlatform, setSelectedPlatform] = useState('Auto-Detect');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -48,6 +51,15 @@ export default function DashboardView({
   const [copiedContent, setCopiedContent] = useState(false);
   const [activeOutputStep, setActiveOutputStep] = useState(3); // 1 = Plan, 2 = Research, 3 = Content, 4 = Evaluator, 5 = Action Kit
   const [hasSavedProject, setHasSavedProject] = useState(false);
+
+  // Persistent Conversation Memory State (Stored in SQLite Database)
+  const [conversationsList, setConversationsList] = useState([]);
+  const [activeConversationId, setActiveConversationId] = useState(
+    () => localStorage.getItem('contentflow_active_conversation_id') || null
+  );
+  const [conversationHistoryMessages, setConversationHistoryMessages] = useState([]);
+  const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
+  const [isLoadingConversation, setIsLoadingConversation] = useState(false);
 
   // 5 Distinct Production Pipeline Steps
   const PRODUCTION_PIPELINE_STEPS = [
@@ -116,26 +128,123 @@ export default function DashboardView({
         const data = await res.json();
         if (data.status === 'healthy') {
           setBackendStatus('online');
-          return;
+          return true;
         }
       }
       setBackendStatus('offline');
+      return false;
     } catch (err) {
       setBackendStatus('offline');
+      return false;
     }
   };
 
+  // Fetch list of persistent conversations from SQLite database
+  const fetchConversationsList = async () => {
+    try {
+      const res = await fetch(`${backendUrl}/api/conversations`);
+      if (res.ok) {
+        const data = await res.json();
+        const list = data.conversations || [];
+        setConversationsList(list);
+        return list;
+      }
+    } catch (err) {
+      console.error('Failed to load conversations:', err);
+    }
+    return [];
+  };
+
+  // Load a full conversation and restore its context & 5-step outputs
+  const loadConversation = async (convId) => {
+    if (!convId) return;
+    setIsLoadingConversation(true);
+    try {
+      const res = await fetch(`${backendUrl}/api/conversations/${convId}`);
+      if (res.ok) {
+        const data = await res.json();
+        const conv = data.conversation;
+        if (conv) {
+          setActiveConversationId(conv.id);
+          localStorage.setItem('contentflow_active_conversation_id', conv.id);
+          setConversationHistoryMessages(conv.messages || []);
+          if (conv.platform && conv.platform !== 'General') {
+            setSelectedPlatform(conv.platform);
+          }
+
+          // Restore generated 5-step result from latest assistant response
+          const assistantMsgs = (conv.messages || []).filter(m => m.role === 'assistant');
+          const latestAssistant = assistantMsgs[assistantMsgs.length - 1];
+          if (latestAssistant && latestAssistant.step_data) {
+            setGeneratedResult({
+              prompt: conv.title,
+              platform: conv.platform,
+              content: latestAssistant.content,
+              plan: latestAssistant.step_data.plan || conv.context?.last_plan,
+              research: latestAssistant.step_data.research || conv.context?.last_research,
+              evaluation: latestAssistant.step_data.evaluation,
+              action_kit: latestAssistant.step_data.action_kit || conv.context?.last_action_kit?.action_kit
+            });
+            setActiveOutputStep(3);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load conversation details:', err);
+    } finally {
+      setIsLoadingConversation(false);
+      setShowHistoryDropdown(false);
+    }
+  };
+
+  // Start a fresh new conversation thread
+  const handleStartNewConversation = () => {
+    setActiveConversationId(null);
+    localStorage.removeItem('contentflow_active_conversation_id');
+    setConversationHistoryMessages([]);
+    setGeneratedResult(null);
+    setPromptInput('');
+    setShowHistoryDropdown(false);
+  };
+
+  // Delete a conversation from persistent storage
+  const handleDeleteConversation = async (e, convId) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`${backendUrl}/api/conversations/${convId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setConversationsList(prev => prev.filter(c => c.id !== convId));
+        if (activeConversationId === convId) {
+          handleStartNewConversation();
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete conversation:', err);
+    }
+  };
+
+  // Auto-restore previous conversation context when user opens or refreshes app
   useEffect(() => {
-    checkBackendHealth();
+    checkBackendHealth().then((isHealthy) => {
+      if (isHealthy) {
+        fetchConversationsList().then((list) => {
+          const savedId = localStorage.getItem('contentflow_active_conversation_id');
+          if (savedId) {
+            loadConversation(savedId);
+          } else if (list && list.length > 0) {
+            loadConversation(list[0].id);
+          }
+        });
+      }
+    });
   }, []);
 
-  // Send Request to Backend AI Agent
+  // Send Request to Backend AI Agent (With Persistent Context)
   const handleGenerate = async () => {
     if (!promptInput.trim()) return;
 
     setIsGenerating(true);
     setErrorMsg('');
-    setGeneratedResult(null);
     setHasSavedProject(false);
     setActiveStep(1);
     setGenerationStep('Step 1: Planning Content Strategy & Persona...');
@@ -163,7 +272,8 @@ export default function DashboardView({
     try {
       const payload = {
         prompt: promptInput.trim(),
-        platform: selectedPlatform === 'Auto-Detect' ? null : selectedPlatform
+        platform: selectedPlatform === 'Auto-Detect' ? null : selectedPlatform,
+        conversation_id: activeConversationId || null
       };
 
       const response = await fetch(`${backendUrl}/api/generate`, {
@@ -184,6 +294,14 @@ export default function DashboardView({
       setGeneratedResult(data);
       setActiveOutputStep(3); // Start user on created content step
       setBackendStatus('online');
+
+      // Update active persistent conversation session
+      if (data.conversation_id) {
+        setActiveConversationId(data.conversation_id);
+        localStorage.setItem('contentflow_active_conversation_id', data.conversation_id);
+        fetchConversationsList();
+        loadConversation(data.conversation_id);
+      }
 
       // Auto save to projects if callback exists
       if (onSaveGeneratedProject) {
@@ -372,8 +490,193 @@ export default function DashboardView({
               </h2>
             </div>
 
-            {/* Live Backend Connection Indicator */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Conversation Memory Switcher & Backend Health Controls */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
+              {/* History Dropdown Button */}
+              <button
+                type="button"
+                onClick={() => setShowHistoryDropdown(!showHistoryDropdown)}
+                className="btn btn-secondary btn-sm"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '0.78rem',
+                  padding: '5px 12px',
+                  borderRadius: 'var(--radius-full)',
+                  borderColor: showHistoryDropdown ? 'var(--primary)' : '#e2e8f0',
+                  backgroundColor: showHistoryDropdown ? 'var(--primary-subtle)' : '#ffffff',
+                  color: showHistoryDropdown ? 'var(--primary)' : 'var(--text-primary)',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                }}
+                title="View and restore saved conversation history from SQLite"
+              >
+                <History size={14} color="var(--primary)" />
+                <span style={{ fontWeight: 600 }}>
+                  {activeConversationId
+                    ? conversationsList.find((c) => c.id === activeConversationId)?.title?.slice(0, 18) || 'Active Thread'
+                    : 'Saved Sessions'}
+                </span>
+                <span
+                  style={{
+                    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                    color: 'var(--primary)',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    padding: '1px 6px',
+                    borderRadius: '999px',
+                    marginLeft: '2px'
+                  }}
+                >
+                  {conversationsList.length}
+                </span>
+                <ChevronDown size={13} />
+              </button>
+
+              {/* Start Fresh Conversation Button */}
+              {activeConversationId && (
+                <button
+                  type="button"
+                  onClick={handleStartNewConversation}
+                  className="btn btn-secondary btn-sm"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '0.76rem',
+                    padding: '5px 10px',
+                    borderRadius: 'var(--radius-full)',
+                    backgroundColor: '#ffffff'
+                  }}
+                  title="Start a fresh conversation thread (resets context)"
+                >
+                  <Plus size={13} color="var(--primary)" />
+                  <span>New Thread</span>
+                </button>
+              )}
+
+              {/* Saved Conversations Dropdown Menu */}
+              {showHistoryDropdown && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '8px',
+                    width: '380px',
+                    maxWidth: '92vw',
+                    backgroundColor: '#ffffff',
+                    borderRadius: 'var(--radius-md)',
+                    boxShadow: '0 12px 28px -4px rgba(0, 0, 0, 0.15), 0 4px 8px -2px rgba(0, 0, 0, 0.05)',
+                    border: '1px solid #cbd5e1',
+                    zIndex: 100,
+                    padding: '12px'
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingBottom: '8px',
+                      marginBottom: '8px',
+                      borderBottom: '1px solid #f1f5f9'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <History size={14} color="var(--primary)" />
+                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        SQLite Memory Sessions ({conversationsList.length})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleStartNewConversation}
+                      className="btn btn-primary btn-sm"
+                      style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 'var(--radius-full)' }}
+                    >
+                      + New Thread
+                    </button>
+                  </div>
+
+                  {isLoadingConversation && (
+                    <div style={{ textAlign: 'center', padding: '12px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      Restoring conversation context...
+                    </div>
+                  )}
+
+                  {conversationsList.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '20px 8px', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                      No saved conversations yet in SQLite. Generate content below to begin!
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '300px', overflowY: 'auto' }}>
+                      {conversationsList.map((conv) => {
+                        const isActive = conv.id === activeConversationId;
+                        return (
+                          <div
+                            key={conv.id}
+                            onClick={() => loadConversation(conv.id)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '8px 12px',
+                              borderRadius: 'var(--radius-sm)',
+                              backgroundColor: isActive ? 'var(--primary-subtle)' : '#f8fafc',
+                              border: isActive ? '1px solid var(--primary)' : '1px solid #e2e8f0',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0, marginRight: '8px' }}>
+                              <div
+                                style={{
+                                  fontSize: '0.8rem',
+                                  fontWeight: isActive ? 700 : 600,
+                                  color: isActive ? 'var(--primary)' : 'var(--text-primary)',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis'
+                                }}
+                              >
+                                {conv.title || 'Untitled Session'}
+                              </div>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  fontSize: '0.68rem',
+                                  color: 'var(--text-muted)',
+                                  marginTop: '2px'
+                                }}
+                              >
+                                <span style={{ fontWeight: 600, color: 'var(--primary)' }}>{conv.platform || 'General'}</span>
+                                <span>•</span>
+                                <span>{conv.message_count || 1} msg{conv.message_count > 1 ? 's' : ''}</span>
+                                <span>•</span>
+                                <span>{new Date(conv.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteConversation(e, conv.id)}
+                              title="Delete conversation from SQLite"
+                              className="btn-secondary btn-icon-only"
+                              style={{ width: '26px', height: '26px', border: 'none', background: 'transparent' }}
+                            >
+                              <Trash2 size={13} color="var(--danger)" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Live Backend Connection Indicator */}
               <div
                 style={{
                   display: 'inline-flex',
@@ -421,10 +724,10 @@ export default function DashboardView({
                 />
                 <span>
                   {backendStatus === 'online'
-                    ? 'Backend Connected: 127.0.0.1:8000'
+                    ? '127.0.0.1:8000'
                     : backendStatus === 'checking'
-                    ? 'Checking Backend...'
-                    : 'Backend Disconnected (Run python main.py)'}
+                    ? 'Checking...'
+                    : 'Offline'}
                 </span>
               </div>
 
@@ -486,13 +789,93 @@ export default function DashboardView({
             </div>
           </div>
 
+          {/* Active Context Memory Continuity Banner & Message Trail */}
+          {activeConversationId && conversationHistoryMessages.length > 0 && (
+            <div
+              style={{
+                marginBottom: '14px',
+                padding: '10px 14px',
+                borderRadius: 'var(--radius-sm)',
+                backgroundColor: 'rgba(79, 70, 229, 0.04)',
+                border: '1px solid rgba(79, 70, 229, 0.18)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: 'var(--primary)', fontWeight: 600 }}>
+                  <MessageSquare size={14} />
+                  <span>
+                    🧠 Context Continuity Active: {conversationHistoryMessages.length} message turn{conversationHistoryMessages.length > 1 ? 's' : ''} in SQLite memory
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleStartNewConversation}
+                  style={{
+                    fontSize: '0.72rem',
+                    color: 'var(--text-muted)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    textDecoration: 'underline'
+                  }}
+                  title="Clear active context and start a clean thread"
+                >
+                  Start Fresh Topic
+                </button>
+              </div>
+
+              {/* Message History Trail */}
+              <div
+                style={{
+                  maxHeight: '110px',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  paddingRight: '4px'
+                }}
+              >
+                {conversationHistoryMessages.map((msg, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      fontSize: '0.75rem',
+                      lineHeight: 1.4,
+                      padding: '6px 10px',
+                      borderRadius: 'var(--radius-sm)',
+                      backgroundColor: msg.role === 'user' ? '#ffffff' : 'rgba(255, 255, 255, 0.8)',
+                      borderLeft: `3px solid ${msg.role === 'user' ? 'var(--primary)' : 'var(--success)'}`,
+                      borderTop: '1px solid #f1f5f9',
+                      borderRight: '1px solid #f1f5f9',
+                      borderBottom: '1px solid #f1f5f9'
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: msg.role === 'user' ? 'var(--primary)' : 'var(--success-text)' }}>
+                      {msg.role === 'user' ? 'You: ' : 'AI Agent: '}
+                    </span>
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      {msg.content.length > 200 ? msg.content.slice(0, 200) + '...' : msg.content}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Interactive Generator Form */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <div style={{ flex: '1 1 320px', position: 'relative' }}>
                 <textarea
                   rows={3}
-                  placeholder="Enter your content request (e.g. Create a viral 30-second TikTok script about 3 AI tools for students)..."
+                  placeholder={
+                    activeConversationId
+                      ? 'Continue this conversation (e.g. "Now make a shorter 15-second version focusing on exam prep", "Change the tone to humorous")...'
+                      : 'Enter your content request (e.g. Create a viral 30-second TikTok script about 3 AI tools for students)...'
+                  }
                   value={promptInput}
                   onChange={(e) => setPromptInput(e.target.value)}
                   style={{

@@ -107,7 +107,7 @@ def _build_fallback_plan(user_request: str, platform: str) -> Dict[str, Any]:
     }
 
 
-def plan_content(user_request: str, platform: str) -> Dict[str, Any]:
+def plan_content(user_request: str, platform: str, conversation_history: str = "") -> Dict[str, Any]:
     """Prompt Chaining Step: Plans the content based on the social media platform.
 
     Purpose: Decide what content to create and organize the work.
@@ -123,17 +123,27 @@ def plan_content(user_request: str, platform: str) -> Dict[str, Any]:
     Args:
         user_request: The user's original request.
         platform: The social media platform classified in Step 1.
+        conversation_history: Previous conversation turns for persistent memory continuity.
 
     Returns:
         A dictionary containing the structured content plan.
     """
+    history_context = ""
+    if conversation_history:
+        history_context = f"""
+=== PERSISTENT CONVERSATION MEMORY & PRIOR TURNS ===
+{conversation_history}
+
+Maintain continuity with the established topic, tone, and feedback from previous turns.
+"""
+
     planning_prompt = f"""You are an expert Content Strategist and Planner.
 Your purpose: Decide what content to create and organize the work.
 
 Input Details:
 - User Request: {user_request}
 - Selected Platform: {platform}
-
+{history_context}
 Create a detailed Content Plan by determining each of the following 5 areas:
 1. Target Audience: Who is this content specifically for? (Demographics, interests, pain points)
 2. Content Goals: What are the primary objectives? (e.g., engagement, education, brand awareness, conversion)
@@ -221,13 +231,14 @@ def search_web(query: str, max_results: int = 3) -> List[Dict[str, str]]:
 #   4. Current trends and Preferred Social Media (Web Search Tool)
 #   5. Past post performance and engagement data (From memory - deferred)
 # =====================================================================
-def research_and_analysis(plan: Dict[str, Any]) -> Dict[str, Any]:
+def research_and_analysis(plan: Dict[str, Any], conversation_history: str = "") -> Dict[str, Any]:
     """Gathers real-time search data and interprets it via LLM to generate actionable insights.
 
     This serves as the prompt chaining input to the next step: 'Create the Content'.
 
     Args:
         plan: The structured content plan output from Step 2.
+        conversation_history: Prior conversation turns from persistent database memory.
 
     Returns:
         A dictionary containing the gathered research and synthesized insights.
@@ -261,13 +272,17 @@ def research_and_analysis(plan: Dict[str, Any]) -> Dict[str, Any]:
     competitor_text = format_search_snippets(competitor_search_results)
     trends_text = format_search_snippets(trends_search_results)
 
-    # 5. Past post performance and engagement data (From memory)
-    # Deferred to memory architecture phase as requested
-    past_performance_memory = (
-        "[Deferred to Memory Architecture Phase] "
-        "Historical high-converting hooks, optimal video duration benchmarks, and audience retention metrics "
-        "will be retrieved from agent memory."
-    )
+    # 5. Past post performance & engagement data (Retrieved from Persistent Memory)
+    if conversation_history:
+        past_performance_memory = (
+            f"Active Persistent Memory Context:\n{conversation_history}\n"
+            f"Ensure tone consistency, avoid repeating past points, and build on established takeaways."
+        )
+    else:
+        past_performance_memory = (
+            f"Initial session turn. Benchmarked against optimal {platform} retention metrics "
+            f"(2-3 second visual hook, high completion rate pacing, and clear single CTA)."
+        )
 
     # Interpretation via LLM (Prompt Chaining to generate useful insights)
     analysis_prompt = f"""You are an elite Social Media Research and Market Analyst.
@@ -432,7 +447,7 @@ How are you approaching this right now? Drop a comment below and share your thou
 #{platform} #{tag_clean} #ContentFlowAI #Insights"""
 
 
-def create_content(plan: Dict[str, Any], research: Dict[str, Any]) -> Dict[str, Any]:
+def create_content(plan: Dict[str, Any], research: Dict[str, Any], conversation_history: str = "") -> Dict[str, Any]:
     """Generates full-length, platform-optimized content using the Plan and Research insights.
 
     Purpose: Transform the plan and researched insights into complete, publish-ready,
@@ -441,6 +456,7 @@ def create_content(plan: Dict[str, Any], research: Dict[str, Any]) -> Dict[str, 
     Args:
         plan: The content plan from Step 2.
         research: The synthesized insights and research data from Step 3.
+        conversation_history: Prior conversation turns from persistent database memory.
 
     Returns:
         A dictionary containing the generated content and platform details.
@@ -452,6 +468,14 @@ def create_content(plan: Dict[str, Any], research: Dict[str, Any]) -> Dict[str, 
     plan_summary = plan.get("plan_summary", "")
     research_summary = research.get("research_summary", "")
 
+    history_context = ""
+    if conversation_history:
+        history_context = f"""
+=== PERSISTENT CONVERSATION MEMORY & USER REVISION CONTEXT ===
+{conversation_history}
+Take any user modifications, revisions, or tone preferences from previous turns into account.
+"""
+
     content_prompt = f"""You are a World-Class Social Media Content Creator and Viral Copywriter.
 Your Purpose: Transform the plan and researched insights into complete, publish-ready, high-converting social media content.
 
@@ -462,7 +486,7 @@ Your Purpose: Transform the plan and researched insights into complete, publish-
 - Branding Guidelines: {branding}
 - Content Strategy Plan:
 {plan_summary}
-
+{history_context}
 === INPUT FROM STEP 3 (RESEARCH & ANALYSIS INSIGHTS) ===
 {research_summary}
 

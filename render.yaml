@@ -1,0 +1,48 @@
+# ========================================================
+# ContentFlow AI - Render Blueprint Deployment Spec
+# ========================================================
+# Deploys:
+#   1. Managed PostgreSQL Database (contentflow-db)
+#   2. FastAPI Backend & AI Agent Engine (contentflow-backend)
+# ========================================================
+
+services:
+  # ------------------------------------------------------
+  # FastAPI Backend & AI Agent Web Service
+  # ------------------------------------------------------
+  - type: web
+    name: contentflow-backend
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r Backend/requirements.txt
+    startCommand: python Backend/main.py
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHONPATH
+        value: .
+      - key: PORT
+        value: 10000
+      - key: DB_TYPE
+        value: postgresql
+      - key: DATABASE_URL
+        fromDatabase:
+          name: contentflow-db
+          property: connectionString
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+
+# --------------------------------------------------------
+# Managed PostgreSQL Database Service
+# --------------------------------------------------------
+databases:
+  - name: contentflow-db
+    databaseName: contentflow_db
+    user: postgres
+    plan: free
+    region: oregon

@@ -36,22 +36,35 @@ DB_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(DB_DIR, "content_memory.db")
 
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+
 def get_db_connection():
     """Returns a connection tuple (conn, is_postgres).
-    Tries PostgreSQL first; if unavailable, falls back to SQLite.
+    Tries PostgreSQL first (via DATABASE_URL or host credentials);
+    if unavailable, falls back to SQLite.
     """
-    if DB_TYPE == "postgresql":
+    if DB_TYPE == "postgresql" or DATABASE_URL:
         try:
             import psycopg2
             from psycopg2.extras import RealDictCursor
-            conn = psycopg2.connect(
-                host=DB_HOST,
-                port=DB_PORT,
-                user=DB_USER,
-                password=DB_PASSWORD,
-                dbname=DB_NAME
-            )
-            return conn, True
+
+            db_url = os.getenv("DATABASE_URL")
+            if db_url:
+                # Compatibility for Render/Supabase/Heroku postgres:// URLs
+                if db_url.startswith("postgres://"):
+                    db_url = db_url.replace("postgres://", "postgresql://", 1)
+                conn = psycopg2.connect(db_url)
+                return conn, True
+            else:
+                conn = psycopg2.connect(
+                    host=DB_HOST,
+                    port=DB_PORT,
+                    user=DB_USER,
+                    password=DB_PASSWORD,
+                    dbname=DB_NAME
+                )
+                return conn, True
         except Exception as e:
             print(f"[Database] PostgreSQL connection failed ({e}), falling back to SQLite.")
 

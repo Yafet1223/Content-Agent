@@ -370,7 +370,7 @@ export default function DashboardView({
     } catch (err) {
       clearInterval(stepInterval);
       console.error('Failed to generate from backend:', err);
-      setErrorMsg(`Failed to connect to backend agent: ${err.message}. Ensure backend is running on http://127.0.0.1:8000.`);
+      setErrorMsg(`Failed to connect to backend agent: ${err.message}. Ensure backend is running on ${backendUrl}.`);
     } finally {
       clearInterval(stepInterval);
       setIsGenerating(false);
@@ -724,7 +724,7 @@ export default function DashboardView({
                 />
                 <span>
                   {backendStatus === 'online'
-                    ? '127.0.0.1:8000'
+                    ? backendUrl.replace(/^https?:\/\//, '').replace(/\/api\/?$/, '')
                     : backendStatus === 'checking'
                     ? 'Checking...'
                     : 'Offline'}

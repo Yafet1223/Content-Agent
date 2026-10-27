@@ -331,7 +331,7 @@ export default function Sidebar({
                   display: 'inline-block'
                 }}
               />
-              Port 8000 Online
+              Agent Engine Online
             </div>
           </div>
         )}

@@ -1,0 +1,45 @@
+# Dependencies
+**/node_modules
+**/vendor
+
+# Build artifacts
+**/dist
+**/build
+**/.next
+**/.cache
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/*$py.class
+**/.pytest_cache
+**/.venv
+**/env/
+**/venv/
+
+# Local databases
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/*.sqlite
+**/*.sqlite3
+
+# Environment & Local Secrets
+**/.env.local
+**/.env.*.local
+
+# Git & IDEs
+.git
+.github
+.gitignore
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+.DS_Store
+Thumbs.db

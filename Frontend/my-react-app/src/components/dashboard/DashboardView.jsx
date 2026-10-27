@@ -38,7 +38,7 @@ export default function DashboardView({
 
   // Backend Connection State
   const [backendStatus, setBackendStatus] = useState('checking'); // 'online' | 'offline' | 'checking'
-  const [backendUrl] = useState('http://127.0.0.1:8000');
+  const [backendUrl] = useState(import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000');
 
   // Dashboard Prompt Generator State
   const [promptInput, setPromptInput] = useState('');
@@ -509,7 +509,7 @@ export default function DashboardView({
                   color: showHistoryDropdown ? 'var(--primary)' : 'var(--text-primary)',
                   boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
                 }}
-                title="View and restore saved conversation history from SQLite"
+                title="View and restore saved conversation history from PostgreSQL"
               >
                 <History size={14} color="var(--primary)" />
                 <span style={{ fontWeight: 600 }}>
@@ -586,7 +586,7 @@ export default function DashboardView({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <History size={14} color="var(--primary)" />
                       <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        SQLite Memory Sessions ({conversationsList.length})
+                        PostgreSQL Memory Sessions ({conversationsList.length})
                       </span>
                     </div>
                     <button
@@ -607,7 +607,7 @@ export default function DashboardView({
 
                   {conversationsList.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '20px 8px', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                      No saved conversations yet in SQLite. Generate content below to begin!
+                      No saved conversations yet in database. Generate content below to begin!
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '300px', overflowY: 'auto' }}>
@@ -662,7 +662,7 @@ export default function DashboardView({
                             <button
                               type="button"
                               onClick={(e) => handleDeleteConversation(e, conv.id)}
-                              title="Delete conversation from SQLite"
+                              title="Delete conversation from database"
                               className="btn-secondary btn-icon-only"
                               style={{ width: '26px', height: '26px', border: 'none', background: 'transparent' }}
                             >
@@ -807,7 +807,7 @@ export default function DashboardView({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: 'var(--primary)', fontWeight: 600 }}>
                   <MessageSquare size={14} />
                   <span>
-                    🧠 Context Continuity Active: {conversationHistoryMessages.length} message turn{conversationHistoryMessages.length > 1 ? 's' : ''} in SQLite memory
+                    🧠 Context Continuity Active: {conversationHistoryMessages.length} message turn{conversationHistoryMessages.length > 1 ? 's' : ''} in PostgreSQL memory
                   </span>
                 </div>
                 <button

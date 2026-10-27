@@ -1,0 +1,97 @@
+# ========================================================
+# ContentFlow AI - Complete Docker Compose Stack
+# ========================================================
+# To start:  docker compose up --build -d
+# To view:   docker compose logs -f
+# To stop:   docker compose down
+# ========================================================
+
+services:
+  # ------------------------------------------------------
+  # 1. PostgreSQL Database Service
+  # ------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: contentflow_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-Yafetgetachew@1234}
+      POSTGRES_DB: ${DB_NAME:-contentflow_db}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-contentflow_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - contentflow-net
+
+  # ------------------------------------------------------
+  # 2. FastAPI Backend & AI Agent Engine
+  # ------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Backend/Dockerfile
+    container_name: contentflow_backend
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - DB_TYPE=postgresql
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-Yafetgetachew@1234}
+      - DB_NAME=${DB_NAME:-contentflow_db}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - contentflow-net
+
+  # ------------------------------------------------------
+  # 3. React Frontend (High-Performance Nginx Reverse Proxy)
+  # ------------------------------------------------------
+  frontend:
+    build:
+      context: ./Frontend/my-react-app
+      dockerfile: Dockerfile
+    container_name: contentflow_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - contentflow-net
+
+# --------------------------------------------------------
+# Persistent Volumes (Preserves DB records across reboots)
+# --------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+
+# --------------------------------------------------------
+# Isolated Bridge Network for Containers
+# --------------------------------------------------------
+networks:
+  contentflow-net:
+    driver: bridge

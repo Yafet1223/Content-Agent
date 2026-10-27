@@ -1,34 +1,44 @@
-# Environments & Secrets
+# ========================================================
+# ContentFlow AI - Git Ignore
+# ========================================================
+
+# Environments & Secrets (CRITICAL: Never commit API keys or passwords)
 .env
 .env.local
 .env.*.local
+*.env
 !.env.example
 
-# Byte-compiled / optimized / DLL files
+# Node / Frontend Dependencies & Builds
+**/node_modules/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+dist/
+**/dist/
+build/
+**/build/
+
+# Local SQLite Databases (PostgreSQL is used, local sqlite test files are ignored)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+Database/*.db
+Database/*.db-wal
+Database/*.db-shm
+
+# Python Byte-compiled & Optimized Files
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 
 # Virtual Environments
 venv/
@@ -38,7 +48,7 @@ ENV/
 env.bak/
 venv.bak/
 
-# IDE & Editor files
+# IDE & Editor Files
 .vscode/
 .idea/
 *.swp
@@ -47,7 +57,15 @@ venv.bak/
 .DS_Store
 Thumbs.db
 
+# Docker Data & Volumes
+postgres_data/
+*.pid
+
 # Testing & Coverage
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Temporary / Scratch Files
+.tempmediaStorage/
+scratch/
